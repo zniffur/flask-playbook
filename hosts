@@ -1,0 +1,4 @@
+[servers]
+ubuntu ansible_host=192.168.1.106 ansible_user=ruffino
+# centos ansible_host=192.168.1.7 ansible_user=ruffino
+centos ansible_host=192.168.1.7 ansible_user=user

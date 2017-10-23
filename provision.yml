@@ -1,0 +1,195 @@
+---
+- hosts: centos
+  vars_files:
+    - vars.yml
+  gather_facts: true
+
+  tasks:
+#    - name: ip1
+#      tags:
+#        - ip1
+#      debug: var=ansible_all_ipv4_addresses
+#      debug: var=ansible_default_ipv4.address
+  
+#    - name: Install system packages
+#      apt: pkg={{ item }} update-cache=yes
+#      with_items: "{{ system_packages }}"
+    - name: Install epel-release
+      become: yes
+      yum: name=epel-release #state=latest
+
+    - name: Install system packages
+      become: yes
+      yum: name={{ item }} #state=latest
+      with_items: "{{ system_packages }}"
+
+#    - name: Save ssh key to server
+#      copy: src={{ ssh_private_key }} dest=/root/.ssh/id_rsa mode=600
+
+#    - name: Create directory for app
+#      file: path={{ install_root }}/{{ project_name }} state=directory
+#
+#    - name: make sure postgresql server is running
+#      service: name=postgresql state=started
+#
+#    - name: create database
+#      become_user: postgres
+#      postgresql_db: name={{ db_name }}
+#
+#    - name: create database user
+#      become_user: postgres
+#      postgresql_user: db={{ db_name }} name={{ db_user }} password={{ db_password }} priv=ALL
+#      
+    - name: pip install virtualenv
+      become: yes
+      pip: 
+        name: virtualenv
+        #executable: pip3
+        #virtualenv_python: python3.5
+
+    - name: pip install flask in virtualenv
+      pip:
+        chdir: "/home/{{ user_name }}"
+        name: "{{ item }}"
+        virtualenv: myproject/myprojectenv
+#        virtualenv_python: python3.5
+      with_items:
+#        - django
+        - flask
+        - gunicorn
+#        - psycopg2
+ 
+    # Create a blank file
+    - name: Create a new flask project file
+      file: path="{{ remote_file_path }}" state=touch
+
+    # Check remote file
+    - stat: path="{{ remote_file_path }}"
+      register: file_path
+
+    # If file exist then copy content in remote file.
+    - copy: content="{{ file_content }}" dest="{{ remote_file_path }}"
+      when: file_path.stat.exists == true
+
+    - name: configure firewalld for flask server
+      tags:
+        - fw
+      become: yes
+      firewalld:
+        port: 5000/tcp
+        permanent: true
+        state: enabled
+        immediate: yes
+
+    # Create a blank file
+    - name: Create a new wsgi file
+      file: path="{{ remote_wsgi_file_path }}" state=touch
+
+    # Check remote file
+    - stat: path="{{ remote_wsgi_file_path }}"
+      register: file_path
+
+    # If file exist then copy content in remote file.
+    - copy: content="{{ wsgi_file_content }}" dest="{{ remote_wsgi_file_path }}"
+      when: file_path.stat.exists == true
+      
+    - name: configure firewalld for gunicorn
+      tags:
+        - fw
+      become: yes
+      firewalld:
+        port: 8000/tcp
+        permanent: true
+        state: enabled
+        immediate: yes
+
+    # Create a blank file
+    - name: Create a new systemd file
+      tags:
+        - x1
+      become: yes
+      file: path="{{ systemd_file_path }}" state=touch
+    # Check remote file
+    - name: check remote file
+      tags:
+        - x1
+      become: yes
+      stat: path="{{ systemd_file_path }}"
+      register: file_path
+    # If file exist then copy content in remote file.
+    - name: copy content
+      tags:
+        - x1
+      become: yes
+      copy: content="{{ systemd_file_content }}" dest="{{ systemd_file_path }}"
+      when: file_path.stat.exists == true
+
+    - name: put config block in nginx file
+      tags:
+        - x11
+      become: yes
+      blockinfile:
+        block: "{{ nginx_file_block }}"
+        insertafter: include /etc/nginx/conf.d/\*.conf;
+        path: /etc/nginx/nginx.conf
+        state: present
+
+    - name: Adding user nginx to group {{ user_name }}
+      tags:
+        - x12
+      become: yes
+      user: name=nginx
+            groups={{ user_name }}
+            append=yes
+            
+    - name: Set 710 permission on home dir
+      tags:
+        - x13
+      file:
+        path: /home/user
+        mode: 0710
+
+    # Put SELinux in permissive mode, logging actions that would be blocked.
+    - name: selinux in permissive
+      become: yes
+      tags:
+        - x14
+      selinux:
+        policy: targeted
+        #state: enforcing
+        state: permissive
+
+    - name: start service {{ project_name }}
+      tags:
+        - x3
+      become: yes
+      systemd: 
+        name: "{{ project_name }}" 
+        state: started
+        enabled: yes
+
+    - name: start service nginx
+      tags:
+        - x3
+      become: yes
+      systemd: 
+        name: nginx 
+        state: started
+        enabled: yes
+
+    - name: configure firewalld for nginx server
+      tags:
+        - fw
+      become: yes
+      firewalld:
+        port: 80/tcp
+        permanent: true
+        state: enabled
+        immediate: yes
+#
+#    - name: remove default nginx site
+#      file: path=/etc/nginx/sites-enabled/default state=absent
+
+# - include: deploy.yml
+
+# vim:ft=ansible:
